@@ -1,200 +1,169 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
-typedef struct {
-    char nome[30];
-    char cor[10];
-    int tropa;
-} Territorio;
+#define TAMANHO_HASH 20
 
-// Funcao para exibir o mapa
-void exibirMapaMundo(Territorio *territorios, int quantidade) {
-    printf("\nMAPA DO MUNDO - ESTADO ATUAL\n");
-    printf("================================\n");
+// Estrutura da sala (nó da árvore binária da mansão)
+typedef struct Sala {
+    char nome[50];
+    struct Sala *esquerda;
+    struct Sala *direita;
+} Sala;
 
-    for (int i = 0; i < quantidade; i++) {
-        printf("\nTERRITORIO %d:\n", i + 1);
-        printf("    - Nome: %s\n", territorios[i].nome);
-        printf("    - Dominado por: Exercito %s\n", territorios[i].cor);
-        printf("    - Tropas: %d\n", territorios[i].tropa);
-    }
+// Estrutura da pista (nó da BST)
+typedef struct Pista {
+    char descricao[100];
+    struct Pista *esquerda;
+    struct Pista *direita;
+} Pista;
+
+// Estrutura da entrada da tabela hash
+typedef struct EntradaHash {
+    char pista[100];
+    char suspeito[50];
+    struct EntradaHash *prox;
+} EntradaHash;
+
+EntradaHash *tabela_hash[TAMANHO_HASH];
+Pista *raiz_pistas = NULL;// Raiz da BST de pistas
+
+
+// Função hash simples para strings
+int hash(const char *str) {
+    int h = 0;
+    while (*str) h = (h * 31 + *str++) % TAMANHO_HASH;// 31 é um número primo comum em funções hash
+    return h;
 }
 
-// Funcao de ataque entre territorios
-void atacar(Territorio *atacante, Territorio *defensor) {
-    int dadoAtacante = rand() % 6 + 1;
-    int dadoDefensor = rand() % 6 + 1;
 
-    printf("\nRolagem de dados:\n");
-    printf("    - Atacante (%s): %d\n", atacante->nome, dadoAtacante);
-    printf("    - Defensor (%s): %d\n", defensor->nome, dadoDefensor);
-
-    if (dadoAtacante > dadoDefensor) {
-        printf("\nO atacante venceu!\n");
-        defensor->tropa--;
-
-        if (defensor->tropa <= 0) {
-            printf("O territorio %s foi conquistado pelo exercito %s!\n", defensor->nome, atacante->cor);
-            strcpy(defensor->cor, atacante->cor);
-            defensor->tropa = atacante->tropa / 2;
-            atacante->tropa -= defensor->tropa;
-        }
-    } else {
-        printf("\nO defensor resistiu ao ataque!\n");
-        atacante->tropa--;
-    }
+// Cria dinamicamente uma sala da mansão
+Sala* criarSala(const char *nome) {
+    Sala *nova = malloc(sizeof(Sala));// Aloca memória para a nova sala
+    strcpy(nova->nome, nome);
+    nova->esquerda = nova->direita = NULL;
+    return nova;
 }
 
-// Funcao para simular ataque com escolha de territorios
-void simularAtaque(Territorio *territorios, int quantidade) {
-    int atacante, defensor;
 
-    printf("\n--- ATAQUE ENTRE TERRITORIOS ---\n");
-    exibirMapaMundo(territorios, quantidade);
-
-    printf("\nEscolha o numero do territorio atacante: ");
-    scanf("%d", &atacante);
-    getchar();
-
-    printf("Escolha o numero do territorio defensor: ");
-    scanf("%d", &defensor);
-    getchar();
-
-    atacante--;
-    defensor--;
-
-    if (atacante < 0 || atacante >= quantidade || defensor < 0 || defensor >= quantidade || atacante == defensor) {
-        printf("Escolhas invalidas. Tente novamente.\n");
-        return;
+// Insere uma pista na BST de forma ordenada
+Pista* inserirPista(Pista *raiz, const char *descricao) {
+    if (!raiz) {
+        Pista *nova = malloc(sizeof(Pista));
+        strcpy(nova->descricao, descricao);
+        nova->esquerda = nova->direita = NULL;
+        return nova;
     }
-
-    if (territorios[atacante].tropa < 1) {
-        printf("O territorio atacante nao possui tropas suficientes!\n");
-        return;
-    }
-
-    atacar(&territorios[atacante], &territorios[defensor]);
+    if (strcmp(descricao, raiz->descricao) < 0)
+        raiz->esquerda = inserirPista(raiz->esquerda, descricao);
+    else if (strcmp(descricao, raiz->descricao) > 0)
+        raiz->direita = inserirPista(raiz->direita, descricao);
+    return raiz;
 }
 
-// Funcao para atribuir missao ao jogador
-void atribuirMissao(char *destino, char *missoes[], int totalMissoes) {
-    int sorteio = rand() % totalMissoes;
-    strcpy(destino, missoes[sorteio]);
+// Insere associação pista/suspeito na tabela hash
+void inserirNaHash(const char *pista, const char *suspeito) {
+    int indice = hash(pista);
+    EntradaHash *nova = malloc(sizeof(EntradaHash));
+    strcpy(nova->pista, pista);
+    strcpy(nova->suspeito, suspeito);
+    nova->prox = tabela_hash[indice];
+    tabela_hash[indice] = nova;
 }
 
-// Funcao para verificar se a missao foi cumprida (logica simples)
-int verificarMissao(char *missao, Territorio *mapa, int tamanho) {
-    if (strstr(missao, "vermelha") != NULL) {
-        for (int i = 0; i < tamanho; i++) {
-            if (strcmp(mapa[i].cor, "vermelha") == 0 && mapa[i].tropa > 0) {
-                return 0; // Missao nao cumprida
-            }
-        }
-        return 1; // Missao cumprida
+// Consulta o suspeito correspondente a uma pista
+char* encontrarSuspeito(const char *pista) {
+    int indice = hash(pista);
+    EntradaHash *atual = tabela_hash[indice];
+    while (atual) {
+        if (strcmp(atual->pista, pista) == 0)
+            return atual->suspeito;
+        atual = atual->prox;
+    }
+    return NULL;
+}
+
+// Navega pela árvore e ativa o sistema de pistas
+void explorarSalas(Sala *sala) {
+    if (!sala) return;
+
+    printf("\nVoce entrou na sala: %s\n", sala->nome);
+
+    // Pistas associadas a salas
+    if (strcmp(sala->nome, "Biblioteca") == 0) {
+        printf("Pista encontrada: Luvas com sangue\n");
+        raiz_pistas = inserirPista(raiz_pistas, "Luvas com sangue");
+    } else if (strcmp(sala->nome, "Cozinha") == 0) {
+        printf("Pista encontrada: Faca suja\n");
+        raiz_pistas = inserirPista(raiz_pistas, "Faca suja");
+    } else if (strcmp(sala->nome, "Sala de Jantar") == 0) {
+        printf("Pista encontrada: Calice quebrado\n");
+        raiz_pistas = inserirPista(raiz_pistas, "Calice quebrado");
     }
 
-    if (strstr(missao, "3 territorios seguidos") != NULL) {
-        for (int i = 0; i < tamanho - 2; i++) {
-            if (strcmp(mapa[i].cor, mapa[i + 1].cor) == 0 &&
-                strcmp(mapa[i].cor, mapa[i + 2].cor) == 0) {
-                return 1;
-            }
-        }
-        return 0;
-    }
+    char escolha;
+    printf("Escolha: esquerda (e), direita (d), sair (s): ");
+    scanf(" %c", &escolha);
 
-    return 0; // Missao generica nao cumprida
+    if (escolha == 'e') explorarSalas(sala->esquerda);
+    else if (escolha == 'd') explorarSalas(sala->direita);
+    else printf("Exploracao encerrada.\n");
 }
 
-// Funcao para liberar memoria
-void liberarMemoria(Territorio *territorios, char *missaoJogador) {
-    free(territorios);
-    free(missaoJogador);
-    printf("Memoria liberada com sucesso.\n");
+
+void listarPistas(Pista *raiz) {
+    if (!raiz) return;
+    listarPistas(raiz->esquerda);
+    printf("- %s\n", raiz->descricao);
+    listarPistas(raiz->direita);
 }
+
+
+// Conduz à fase de julgamento final
+int contarPistasSuspeito(Pista *raiz, const char *suspeito) {
+    if (!raiz) return 0;
+    int cont = 0;
+    char *s = encontrarSuspeito(raiz->descricao);
+    if (s && strcmp(s, suspeito) == 0) cont++;
+    cont += contarPistasSuspeito(raiz->esquerda, suspeito);
+    cont += contarPistasSuspeito(raiz->direita, suspeito);
+    return cont;
+}
+
+void verificarSuspeitoFinal() {
+    char acusacao[50];
+    printf("\nPistas coletadas:\n");
+    listarPistas(raiz_pistas);
+
+    printf("\nQuem voce acusa? ");
+    scanf(" %[^\n]", acusacao);
+
+    int total = contarPistasSuspeito(raiz_pistas, acusacao);
+    if (total >= 2)
+        printf("\nAcusacao valida! %s é o culpado com %d pistas.\n", acusacao, total);
+    else
+        printf("\nAcusacao fraca. Apenas %d pista(s) apontam para %s.\n", total, acusacao);
+}
+
 
 int main() {
-    srand(time(NULL)); // Inicializa gerador de numeros aleatorios
+    // Montagem manual da mansão
+    Sala *entrada = criarSala("Entrada");
+    entrada->esquerda = criarSala("Biblioteca");
+    entrada->direita = criarSala("Cozinha");
+    entrada->esquerda->esquerda = criarSala("Sala de Jantar");
 
-    int quantidade = 5;
-    Territorio *territorios = (Territorio *)malloc(quantidade * sizeof(Territorio));
-    if (territorios == NULL) {
-        printf("Erro ao alocar memoria para os territorios.\n");
-        return 1;
-    }
+    // Associação de pistas a suspeitos
+    inserirNaHash("Luvas com sangue", "Sr. Black");
+    inserirNaHash("Faca suja", "Sra. White");
+    inserirNaHash("Calice quebrado", "Srta. Scarlet");
 
-    // Vetor de missoes pre-definidas
-    char *missoes[] = {
-        "Conquistar 3 territorios seguidos",
-        "Eliminar todas as tropas da cor vermelha",
-        "Dominar o territorio central",
-        "Ter pelo menos 10 tropas em um territorio",
-        "Controlar todos os territorios com nome iniciando em A"
-    };
-    int totalMissoes = 5;
+    // Início da exploração
+    printf("Bem-vindo a mansao Enigma!\n");
+    explorarSalas(entrada);
 
-    // Aloca missao do jogador
-    char *missaoJogador = (char *)malloc(100 * sizeof(char));
-    if (missaoJogador == NULL) {
-        printf("Erro ao alocar memoria para a missao.\n");
-        free(territorios);
-        return 1;
-    }
+    // Fase final
+    verificarSuspeitoFinal();
 
-    atribuirMissao(missaoJogador, missoes, totalMissoes);
-    printf("\nMISSAO DO JOGADOR: %s\n", missaoJogador);
-
-    printf("\nVamos cadastrar os 5 territorios iniciais do nosso mundo:\n");
-    for (int i = 0; i < quantidade; i++) {
-        printf("\nTerritorio %d:\n", i + 1);
-
-        printf("Nome: ");
-        fgets(territorios[i].nome, sizeof(territorios[i].nome), stdin);
-        territorios[i].nome[strcspn(territorios[i].nome, "\n")] = '\0';
-
-        printf("Cor (nome do exercito): ");
-        fgets(territorios[i].cor, sizeof(territorios[i].cor), stdin);
-        territorios[i].cor[strcspn(territorios[i].cor, "\n")] = '\0';
-
-        printf("Numero de tropas: ");
-        scanf("%d", &territorios[i].tropa);
-        getchar();
-    }
-
-    int opcao;
-    do {
-        printf("\nMENU DE ACOES\n");
-        printf("1. Exibir mapa\n");
-        printf("2. Realizar ataque\n");
-        printf("0. Sair\n");
-        printf("Escolha uma opcao: ");
-        scanf("%d", &opcao);
-        getchar();
-
-        switch (opcao) {
-            case 1:
-                exibirMapaMundo(territorios, quantidade);
-                break;
-            case 2:
-                simularAtaque(territorios, quantidade);
-                break;
-            case 0:
-                printf("Encerrando o jogo...\n");
-                break;
-            default:
-                printf("Opcao invalida!\n");
-        }
-
-        // Verificacao silenciosa da missao
-        if (verificarMissao(missaoJogador, territorios, quantidade)) {
-            printf("\nPARABENS! Voce cumpriu sua missao: %s\n", missaoJogador);
-            break;
-        }
-
-    } while (opcao != 0);
-
-    liberarMemoria(territorios, missaoJogador);
     return 0;
 }
